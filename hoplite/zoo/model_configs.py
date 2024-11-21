@@ -15,10 +15,10 @@
 
 """Convenience functions for predefined model configs."""
 
+import dataclasses
 import enum
+import importlib
 
-from hoplite.zoo import models
-from hoplite.zoo import taxonomy_model_tf
 from hoplite.zoo import zoo_interface
 from ml_collections import config_dict
 
@@ -37,16 +37,53 @@ class ModelConfigName(enum.Enum):
   MULTISPECIES_WHALE = 'multispecies_whale'
 
 
-MODEL_CLASS_MAP: dict[str, type[zoo_interface.EmbeddingModel]] = {
-    'taxonomy_model_tf': taxonomy_model_tf.TaxonomyModelTF,
-    'separator_model_tf': models.SeparatorModelTF,
-    'birb_separator_model_tf1': models.BirbSepModelTF1,
-    'birdnet': models.BirdNet,
-    'placeholder_model': models.PlaceholderModel,
-    'separate_embed_model': models.SeparateEmbedModel,
-    'tfhub_model': models.TFHubModel,
-    'google_whale': models.GoogleWhaleModel,
-}
+@dataclasses.dataclass
+class PresetInfo:
+  """Metadata for loading a specific model.
+
+  Attributes:
+    preset_name: The name of the preset.
+    model_config: The model config.
+    model_key: The short name for the model class.
+    embedding_dim: The embedding dimension of the model.
+  """
+
+  preset_name: str
+  model_config: config_dict.ConfigDict
+  model_key: str
+  embedding_dim: int
+
+  def get_model_class(self) -> type[zoo_interface.EmbeddingModel]:
+    """Convenience method to get the model class for this preset."""
+    return get_model_class(self.model_key)
+
+  def load_model(self) -> zoo_interface.EmbeddingModel:
+    """Loads the embedding model."""
+    return get_model_class(self.model_key).from_config(self.model_config)
+
+
+def get_model_class(model_key: str) -> type[zoo_interface.EmbeddingModel]:
+  """Import and return the model class."""
+  if model_key == 'taxonomy_model_tf':
+    module = importlib.import_module('hoplite.zoo.taxonomy_model_tf')
+    return module.TaxonomyModelTF
+  elif model_key == 'google_whale':
+    module = importlib.import_module('hoplite.zoo.models_tf')
+    return module.GoogleWhaleModel
+  elif model_key == 'placeholder_model':
+    module = importlib.import_module('hoplite.zoo.placeholder_model')
+    return module.PlaceholderModel
+  elif model_key == 'birdnet':
+    module = importlib.import_module('hoplite.zoo.models_tf')
+    return module.BirdNet
+  elif model_key == 'tfhub_model':
+    module = importlib.import_module('hoplite.zoo.models_tf')
+    return module.TFHubModel
+  elif model_key == 'aves':
+    module = importlib.import_module('hoplite.zoo.aves_model')
+    return module.AVES
+  else:
+    raise ValueError(f'Unknown model key: {model_key}')
 
 
 def load_model_by_name(
@@ -54,12 +91,11 @@ def load_model_by_name(
 ) -> zoo_interface.EmbeddingModel:
   """Loads the embedding model by model name."""
   model_config_name = ModelConfigName(model_config_name)
-  model_class_key, _, config = get_preset_model_config(model_config_name)
-  model_class = MODEL_CLASS_MAP[model_class_key]
-  return model_class.from_config(config)
+  preset_info = get_preset_model_config(model_config_name)
+  return preset_info.load_model()
 
 
-def get_preset_model_config(preset_name: str | ModelConfigName):
+def get_preset_model_config(preset_name: str | ModelConfigName) -> PresetInfo:
   """Get a config_dict for a known model."""
   model_config = config_dict.ConfigDict()
   preset_name = ModelConfigName(preset_name)
@@ -92,6 +128,8 @@ def get_preset_model_config(preset_name: str | ModelConfigName):
     model_config.window_size_s = 5.0
     model_config.hop_size_s = 5.0
     model_config.sample_rate = 32000
+    taxonomy_model_tf = importlib.import_module(
+        'hoplite.zoo.taxonomy_model_tf')
     model_config.tfhub_version = 1
     model_config.tfhub_path = taxonomy_model_tf.SURFPERCH_TF_HUB_URL
     model_config.model_path = ''
@@ -134,6 +172,19 @@ def get_preset_model_config(preset_name: str | ModelConfigName):
     model_config.model_url = 'https://tfhub.dev/google/vggish/1'
     model_config.embedding_index = -1
     model_config.logits_index = -1
+  elif preset_name == ModelConfigName.AVES:
+    model_key = 'aves'
+    embedding_dim = 768
+    model_config.sample_rate = 16000
+  elif preset_name == 'placeholder':
+    model_key = 'placeholder'
+    embedding_dim = 128
+    model_config.sample_rate = 16000
   else:
     raise ValueError('Unsupported model preset: %s' % preset_name)
-  return model_key, embedding_dim, model_config
+  return PresetInfo(
+      preset_name=preset_name.value,
+      model_config=model_config,
+      model_key=model_key,
+      embedding_dim=embedding_dim,
+  )

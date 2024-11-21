@@ -35,3 +35,17 @@ The primary function in the `EmbeddingModel` interface is
 `EmbeddingModel.embed(audio_array)` which runs model inference on the provided
 audio array. The outputs are an `zoo_interface.InferenceOutputs` instance, which
 contains optional embeddings, logits, and separated audio.
+
+## Dependency Management
+
+Models will typically depend on one of tensorflow, jax, and pytorch. We allow
+specifying particular ML frameworks during package installation: as a result,
+imports need to be carefully managed to avoid errors when using the `zoo`
+library with only a subset of the frameworks installed.
+
+* The `zoo_interface.py` and `zoo_test.py` have no framework dependencies.
+* `model_configs.py` contains convenience loaders for all supported models.
+  The relevant framework for each model is imported lazily, instead of at the
+  top of the file.
+* Model tests with specific framework dependencies should be placed in a
+  subdirectory. (Such as `tests_tf` for models with tensorflow dependencies.)

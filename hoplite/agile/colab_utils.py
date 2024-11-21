@@ -73,13 +73,11 @@ def load_configs(
     # Put the DB in the same directory as the audio.
     db_path = epath.Path(next(iter(audio_sources.audio_globs)).base_path)
 
-  model_key, embedding_dim, model_config = (
-      model_configs.get_preset_model_config(model_config_key)
-  )
+  preset_info = model_configs.get_preset_model_config(model_config_key)
   db_model_config = embed.ModelConfig(
-      model_key=model_key,
-      embedding_dim=embedding_dim,
-      model_config=model_config,
+      model_key=preset_info.model_key,
+      embedding_dim=preset_info.embedding_dim,
+      model_config=preset_info.model_config,
   )
   db_config = config_dict.ConfigDict({
       'db_path': db_path,
@@ -87,7 +85,7 @@ def load_configs(
   if db_key == 'sqlite_usearch':
     # A sane default.
     db_config.usearch_cfg = sqlite_usearch_impl.get_default_usearch_config(
-        embedding_dim
+        preset_info.embedding_dim
     )
 
   return AgileConfigs(
