@@ -1,4 +1,4 @@
-# Perch Hoplite
+# Hoplite Vector Database
 
 Hoplite is a system for storing large volumes of embeddings from machine
 perception models. We focus on combining vector search with active learning
