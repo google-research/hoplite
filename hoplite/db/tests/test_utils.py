@@ -52,6 +52,10 @@ def make_db(
   config = config_dict.ConfigDict()
   config.embedding_dim = embedding_dim
   db.insert_metadata('db_config', config)
+  model_config = config_dict.ConfigDict()
+  model_config.embedding_dim = embedding_dim
+  model_config.model_name = 'fake_model'
+  db.insert_metadata('model_config', model_config)
   db.commit()
   return db
 
