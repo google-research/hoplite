@@ -64,6 +64,20 @@ poetry install
 
 ## Notes on Dependencies
 
+Machine learning framework libraries are pretty heavy! It can also be difficult to coordinate CUDA versions across multiple frameworks to ensure good GPU behavior.  Thus, we provide some ability to select dependencies according to your needs.
+
+Tensorflow is used in the `agile` library for training linear classifiers. If you do not need the `agile` library or any of the tensorflow models in the `zoo`, you can use poetry to install without tensorflow like so:
+
+```bash
+poetry install --without tf
+```
+
+The primary place where multiple frameworks may be needed is in the `zoo` library, which provides wrappers for various bioacoustic models. To install with JAX (allowing use of some models in the `zoo`):
+
+```bash
+poetry install --with jax
+```
+
 # Disclaimer
 
 This is not an officially supported Google product. This project is not

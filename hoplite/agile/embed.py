@@ -59,7 +59,7 @@ class EmbedWorker:
     self.model_config = model_config
     self.audio_sources = audio_sources
     if embedding_model is None:
-      model_class = model_configs.MODEL_CLASS_MAP[model_config.model_key]
+      model_class = model_configs.get_model_class(model_config.model_key)
       self.embedding_model = model_class.from_config(model_config.model_config)
     else:
       self.embedding_model = embedding_model
