@@ -19,8 +19,11 @@ import os
 import tempfile
 
 from hoplite.agile import classifier
+from hoplite.agile import classifier_data
+from hoplite.db.tests import test_utils as db_test_utils
 from ml_collections import config_dict
 import numpy as np
+import pandas as pd
 
 from absl.testing import absltest
 
@@ -68,6 +71,93 @@ class ClassifierTest(absltest.TestCase):
     np.testing.assert_allclose(classy_loaded.beta_bias, classy.beta_bias)
     self.assertSequenceEqual(classy_loaded.classes, classy.classes)
     self.assertEqual(classy_loaded.embedding_model_config.model_name, 'nelson')
+
+  def test_train_linear_classifier(self):
+    rng = np.random.default_rng(1234)
+    embedding_dim = 8
+    db = db_test_utils.make_db(
+        path=self.tempdir,
+        db_type='in_mem',
+        num_embeddings=1024,
+        rng=rng,
+        embedding_dim=embedding_dim,
+    )
+    db_test_utils.add_random_labels(
+        db, rng=rng, unlabeled_prob=0.5, positive_label_prob=0.1
+    )
+    data_manager = classifier_data.AgileDataManager(
+        target_labels=db_test_utils.CLASS_LABELS,
+        db=db,
+        train_ratio=0.8,
+        min_eval_examples=5,
+        batch_size=32,
+        weak_negatives_batch_size=10,
+        rng=np.random.default_rng(42),
+    )
+    lc, eval_scores = classifier.train_linear_classifier(
+        data_manager,
+        learning_rate=0.01,
+        weak_neg_weight=0.5,
+        num_train_steps=128,
+        loss='bce',
+    )
+    self.assertIsInstance(lc, classifier.LinearClassifier)
+    np.testing.assert_equal(
+        lc.beta.shape, (embedding_dim, len(db_test_utils.CLASS_LABELS))
+    )
+    np.testing.assert_equal(
+        lc.beta_bias.shape, (len(db_test_utils.CLASS_LABELS),)
+    )
+    self.assertIn('roc_auc', eval_scores)
+
+  def test_write_inference_csv(self):
+    embedding_dim = 8
+    rng = np.random.default_rng(1234)
+    db = db_test_utils.make_db(
+        path=self.tempdir,
+        db_type='in_mem',
+        num_embeddings=1024,
+        rng=rng,
+        embedding_dim=embedding_dim,
+    )
+    db_test_utils.add_random_labels(
+        db, rng=rng, unlabeled_prob=0.5, positive_label_prob=0.1
+    )
+    classes = ('alpha', 'beta', 'delta', 'epsilon')
+    classy = self._make_linear_classifier(embedding_dim, classes)
+    inference_classes = ('alpha', 'epsilon', 'gamma')
+    classy.beta_bias = 0.0
+    csv_filepath = os.path.join(self.tempdir, 'inference.csv')
+    classifier.write_inference_csv(
+        embedding_ids=db.get_embedding_ids(),
+        linear_classifier=classy,
+        db=db,
+        output_filepath=csv_filepath,
+        threshold=0.0,
+        labels=inference_classes,
+    )
+    inference_csv = pd.read_csv(csv_filepath)
+    got_labels = np.unique(inference_csv['label'].values)
+    # `gamma` is not in the inference_classes, so should not be in the output.
+    expected_labels = ('alpha', 'epsilon')
+    np.testing.assert_array_equal(got_labels, expected_labels)
+
+    # We can estimate the total number of detections. There are 1024 embeddings,
+    # and we will only have outputs for two classes. Each logit is > 0 with
+    # probability 0.5, because we are using an unbiased random classifier
+    # with random embeddings. So, we expect 1024 * 0.5 * 2 = 1024 detections.
+    self.assertGreater(len(inference_csv), 1000)
+    self.assertLess(len(inference_csv), 1050)
+
+    # Spot check some of the inference scores.
+    for i in range(16):
+      emb_id = inference_csv['idx'][i]
+      lbl = inference_csv['label'][i]
+      got_logit = inference_csv['logits'][i]
+      class_idx = classy.classes.index(lbl)
+      embedding = db.get_embedding(emb_id)
+      expect_logit = classy(embedding)[class_idx]
+      self.assertEqual(np.float16(got_logit), np.float16(expect_logit))
 
 
 if __name__ == '__main__':
